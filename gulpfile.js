@@ -27,6 +27,12 @@ var runSequence = require('run-sequence');
 var browserSync = require('browser-sync');
 var pagespeed = require('psi');
 var reload = browserSync.reload;
+var beep = require('beepbeep');
+var gutil = require('gulp-util');
+var plumber = require('gulp-plumber');
+var concat = require('gulp-concat');
+var uglify = require('gulp-uglify');
+var deploy = require('gulp-gh-pages');
 
 var AUTOPREFIXER_BROWSERS = [
   'ie >= 10',
@@ -39,6 +45,18 @@ var AUTOPREFIXER_BROWSERS = [
   'android >= 4.4',
   'bb >= 10'
 ];
+
+var vendorScripts = [
+  'bower_components/jquery/dist/jquery.js',
+  'bower_components/angular/angular.js',
+  'bower_components/angular-route/angular-route.js',
+  'bower_components/angular-sanitize/angular-sanitize.js'
+];
+
+var onError = function (err) {
+  beep(4, 250);
+  gutil.log(gutil.colors.green(err));
+};
 
 // Lint JavaScript
 gulp.task('jshint', function () {
@@ -100,6 +118,19 @@ gulp.task('styles', function () {
     .pipe($.size({title: 'styles'}));
 });
 
+// My build vendor
+gulp.task('vendor', function() {
+  gulp.src(vendorScripts.map(function(path) { return './' + path; }))
+    .pipe(plumber({
+      errorHandler: onError
+    }))
+    .pipe(concat('vendor.js')) // Bundle to a single file
+    .pipe(uglify())
+    .pipe(gulp.dest('.tmp/scripts/'))
+    .pipe(gulp.dest('dist/styles')) // Output it to our dist folder
+    .pipe($.size({title: 'vendor'}));
+});
+
 // Scan Your HTML For Assets & Optimize Them
 gulp.task('html', function () {
   var assets = $.useref.assets({searchPath: '{.tmp,app}'});
@@ -140,7 +171,7 @@ gulp.task('html', function () {
 gulp.task('clean', del.bind(null, ['.tmp', 'dist/*', '!dist/.git'], {dot: true}));
 
 // Watch Files For Changes & Reload
-gulp.task('serve', ['styles'], function () {
+gulp.task('serve', ['styles', 'vendor'], function () {
   browserSync({
     notify: false,
     // Customize the BrowserSync console logging prefix
@@ -156,6 +187,7 @@ gulp.task('serve', ['styles'], function () {
   gulp.watch(['app/styles/**/*.{scss,css}'], ['styles', reload]);
   gulp.watch(['app/scripts/**/*.js'], ['jshint']);
   gulp.watch(['app/images/**/*'], reload);
+  gulp.watch(['bower_components/**/*'], ['vendor']);
 });
 
 // Build and serve the output from the dist build
@@ -173,7 +205,7 @@ gulp.task('serve:dist', ['default'], function () {
 
 // Build Production Files, the Default Task
 gulp.task('default', ['clean'], function (cb) {
-  runSequence('styles', ['jshint', 'html', 'images', 'fonts', 'copy'], cb);
+  runSequence('vendor', 'styles', ['jshint', 'html', 'images', 'fonts', 'copy'], cb);
 });
 
 // Run PageSpeed Insights
